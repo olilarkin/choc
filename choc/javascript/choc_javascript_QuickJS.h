@@ -26122,6 +26122,33 @@ typedef enum {
 #define FUNC_RET_YIELD      1
 #define FUNC_RET_YIELD_STAR 2
 
+/* Get a human-readable description of a value's type for error messages */
+static const char *JS_GetValueTypeDesc(JSContext *ctx, JSValueConst val, char *buf, size_t buf_size)
+{
+    int tag = JS_VALUE_GET_TAG(val);
+    switch (tag) {
+    case JS_TAG_NULL:
+        return "null";
+    case JS_TAG_UNDEFINED:
+        return "undefined";
+    case JS_TAG_BOOL:
+        return "boolean";
+    case JS_TAG_INT:
+    case JS_TAG_FLOAT64:
+        return "number";
+    case JS_TAG_STRING:
+        return "string";
+    case JS_TAG_SYMBOL:
+        return "symbol";
+    case JS_TAG_BIG_INT:
+        return "bigint";
+    case JS_TAG_OBJECT:
+        return "object";
+    default:
+        return "value";
+    }
+}
+
 /* argv[] is modified if (flags & JS_CALL_FLAG_COPY_ARGV) = 0. */
 static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                                JSValueConst this_obj, JSValueConst new_target,
@@ -26200,7 +26227,11 @@ QUICKJS_OPCODES(FMT, DEF, def)
         call_func = rt->class_array[p->class_id].call;
         if (!call_func) {
         not_a_function:
-            return JS_ThrowTypeError(caller_ctx, "not a function");
+            {
+                char type_buf[64];
+                return JS_ThrowTypeError(caller_ctx, "%s is not a function",
+                    JS_GetValueTypeDesc(caller_ctx, func_obj, type_buf, sizeof(type_buf)));
+            }
         }
         return call_func(caller_ctx, func_obj, this_obj, argc,
                          (JSValueConst *)argv, flags);
@@ -28756,7 +28787,11 @@ static JSValue JS_CallConstructorInternal(JSContext *ctx,
         call_func = ctx->rt->class_array[p->class_id].call;
         if (!call_func) {
         not_a_function:
-            return JS_ThrowTypeError(ctx, "not a function");
+            {
+                char type_buf[64];
+                return JS_ThrowTypeError(ctx, "%s is not a function",
+                    JS_GetValueTypeDesc(ctx, func_obj, type_buf, sizeof(type_buf)));
+            }
         }
         return call_func(ctx, func_obj, new_target, argc,
                          (JSValueConst *)argv, flags);
@@ -45889,7 +45924,11 @@ static int check_function(JSContext *ctx, JSValueConst obj)
 {
     if (js_likely(JS_IsFunction(ctx, obj)))
         return 0;
-    JS_ThrowTypeError(ctx, "not a function");
+    {
+        char type_buf[64];
+        JS_ThrowTypeError(ctx, "%s is not a function",
+            JS_GetValueTypeDesc(ctx, obj, type_buf, sizeof(type_buf)));
+    }
     return -1;
 }
 
@@ -55180,7 +55219,11 @@ static JSValue js_proxy_call(JSContext *ctx, JSValueConst func_obj,
         return JS_EXCEPTION;
     if (!s->is_func) {
         JS_FreeValue(ctx, method);
-        return JS_ThrowTypeError(ctx, "not a function");
+        {
+            char type_buf[64];
+            return JS_ThrowTypeError(ctx, "proxy target %s is not a function",
+                JS_GetValueTypeDesc(ctx, s->target, type_buf, sizeof(type_buf)));
+        }
     }
     if (JS_IsUndefined(method))
         return JS_Call(ctx, s->target, this_obj, argc, argv);
